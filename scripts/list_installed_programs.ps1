@@ -10,4 +10,3 @@ $installedApps = Get-InstalledApps
 
 # Exibir a lista de aplicativos instalados
 $installedApps | Select-Object DisplayName, DisplayVersion | ConvertTo-Csv -NoTypeInformation
-

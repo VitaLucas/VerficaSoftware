@@ -2,8 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:process_run/process_run.dart';
 import 'dart:io';
+import 'dart:convert';
+import 'package:csv/csv.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:path_provider/path_provider.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(MyApp());
 }
 
@@ -26,17 +36,19 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class MyAppState extends ChangeNotifier { 
-  List<List<String>> _outputRows = [];
+class MyAppState extends ChangeNotifier {
+  List<Map<String, String>> _outputRows = [];
+  List<List<dynamic>> _homologationRows = [];
   String _error = '';
-  bool _isLoading = false;  // Adiciona um estado de carregamento
+  bool _isLoading = false;
 
-  List<List<String>> get outputRows => _outputRows;
+  List<Map<String, String>> get outputRows => _outputRows;
+  List<List<dynamic>> get homologationRows => _homologationRows;
   String get error => _error;
-  bool get isLoading => _isLoading;  // Getter para o estado de carregamento
+  bool get isLoading => _isLoading;
 
   Future<void> _runScript() async {
-    _isLoading = true;  // Define o estado de carregamento como verdadeiro
+    _isLoading = true;
     notifyListeners();
 
     try {
@@ -51,7 +63,8 @@ class MyAppState extends ChangeNotifier {
         arguments = [scriptPath];
       } else {
         _error = 'Sistema operacional não suportado.';
-        _outputRows = [];  // Limpa as linhas de saída se o sistema não for suportado
+        _outputRows = [];
+        notifyListeners();
         return;
       }
 
@@ -60,33 +73,98 @@ class MyAppState extends ChangeNotifier {
         arguments,
       );
 
-      _outputRows = parseCsv(result.stdout);
+      // Após obter os dados do script, faça o processamento do CSV de homologação
+      await fetchAndProcessCsv(result.stdout);
+
       _error = '';
     } catch (e) {
       _error = 'Erro ao executar o script: $e';
       _outputRows = [];
     } finally {
-      _isLoading = false;  // Define o estado de carregamento como falso
+      _isLoading = false;
       notifyListeners();
     }
   }
 
-  List<List<String>> parseCsv(String csvData) {
-    List<List<String>> rows = [];
-    List<String> lines = csvData.split('\n');
+  Future<void> fetchAndProcessCsv(String scriptOutput) async {
+    _isLoading = true;
+    notifyListeners();
 
-    // Verifica se há pelo menos uma linha e remove a primeira linha (cabeçalhos)
+    try {
+      // Referência ao arquivo no Firebase Storage
+      final storageRef = FirebaseStorage.instance.ref().child('homologation.csv');
+
+      // Baixar o arquivo para um diretório temporário local
+      final directory = await getApplicationDocumentsDirectory();
+      final filePath = '${directory.path}/homologation.csv';
+      final file = File(filePath);
+
+      await storageRef.writeToFile(file);
+
+      // Ler e processar o arquivo CSV
+      final csvData = await file.readAsString();
+      _homologationRows = CsvToListConverter().convert(csvData);
+
+      if (_homologationRows.isNotEmpty) {
+        _homologationRows.removeAt(0); // Remove cabeçalhos
+      }
+
+      _outputRows = await parseAndCompareCsv(scriptOutput);
+      _error = '';
+    } catch (e) {
+      _error = 'Erro ao buscar o arquivo CSV: $e';
+      _outputRows = [];
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<List<Map<String, String>>> parseAndCompareCsv(String scriptOutput) async {
+    List<Map<String, String>> rows = [];
+    List<String> lines = scriptOutput.split('\n');
+
     if (lines.isNotEmpty) {
-      lines.removeAt(0);
+      lines.removeAt(0); // Remove cabeçalhos
     }
 
-  for (String line in lines) {
+    for (String line in lines) {
       if (line.isNotEmpty) {
-        // Remove as aspas dos dados
         List<String> columns = line.split(',')
-          .map((column) => column.replaceAll('"', '')) // Remove as aspas
-          .toList();
-        rows.add(columns);
+            .map((column) => column.replaceAll('"', '').trim())
+            .toList();
+
+        if (columns.length >= 2) {
+          String name = columns[0];
+          String version = columns[1];
+
+          // Comparação com o arquivo de homologação
+          bool isHomologated = false;
+          bool versionMismatch = false;
+
+          for (var homologationRow in _homologationRows) {
+            if (homologationRow.length >= 2) {
+              String homologationName = homologationRow[0].toString();
+              String homologationVersion = homologationRow[1].toString();
+
+              if (homologationName == name) {
+                if (homologationVersion == version) {
+                  isHomologated = true;
+                  break; // Encontrou uma correspondência exata, pode sair do loop
+                } else {
+                  versionMismatch = true;
+                }
+              }
+            }
+          }
+
+          // Adiciona o resultado da comparação
+          rows.add({
+            'name': name,
+            'version': version,
+            'status': isHomologated ? 'homologated' : (versionMismatch ? 'mismatch' : 'not_found')
+          });
+        }
       }
     }
 
@@ -100,10 +178,11 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  int _selectedIndex = 0;
+
   @override
   void initState() {
     super.initState();
-    // Executa o script quando o widget é inicializado
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<MyAppState>()._runScript();
     });
@@ -114,43 +193,188 @@ class _MyHomePageState extends State<MyHomePage> {
     var appState = context.watch<MyAppState>();
 
     return Scaffold(
+      body: Row(
+        children: [
+          NavigationRail(
+            selectedIndex: _selectedIndex,
+            onDestinationSelected: (index) {
+              setState(() {
+                _selectedIndex = index;
+              });
+            },
+            labelType: NavigationRailLabelType.all,
+            destinations: [
+              NavigationRailDestination(
+                icon: Icon(Icons.home),
+                label: Text('Softwares desta estação'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.check),
+                label: Text('Softwares homologados CC'),
+              ),
+            ],
+          ),
+          Expanded(
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: [
+                MyHomePageContent(), // Página Principal
+                HomologationPage(),  // Softwares Homologados
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class MyHomePageContent extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    var appState = context.watch<MyAppState>();
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            
+            SizedBox(height: 10),
+            if (appState.isLoading)
+              Center(
+                child: CircularProgressIndicator(),
+              ),
+            if (!appState.isLoading)
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.vertical,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: DataTable(
+                      columns: [
+                        DataColumn(label: Text('Nome')),
+                        DataColumn(label: Text('Versão')),
+                        DataColumn(label: Text('Compliance')),
+                      ],
+                      rows: appState.outputRows.map((row) {
+                        Color color;
+                        switch (row['status']) {
+                          case 'homologated':
+                            color = Colors.green;
+                            break;
+                          case 'mismatch':
+                            color = Colors.yellow;
+                            break;
+                          default:
+                            color = Colors.red;
+                        }
+                        return DataRow(
+                          cells: [
+                            DataCell(Text(row['name']!)),
+                            DataCell(Text(row['version']!)),
+                            DataCell(Container(
+                              width: 20,
+                              height: 20,
+                              color: color,
+                            )),
+                          ],
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ),
+            if (appState.error.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text(
+                  appState.error,
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            SizedBox(height: 10),
+            // Legenda das cores
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ElevatedButton(
+                    onPressed: () {
+                    context.read<MyAppState>()._runScript();
+                    },
+                    child: Text('Atualizar Lista'),
+                  ),
+                  Row(
+                    children: [
+                      Container(width: 20, height: 20, color: Colors.green),
+                      SizedBox(width: 10),
+                      Text('Homologado'),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Container(width: 20, height: 20, color: Colors.yellow),
+                      SizedBox(width: 10),
+                      Text('Versão Diferente'),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Container(width: 20, height: 20, color: Colors.red),
+                      SizedBox(width: 10),
+                      Text('Não Homologado'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class HomologationPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final appState = context.watch<MyAppState>();
+
+    return Scaffold(
       appBar: AppBar(
-        title: Text('Lista de Softwares Instalados'),
+        title: Text('Softwares Homologados CC'),
       ),
       body: Center(
         child: Padding(
-          padding: const EdgeInsets.all(16.0),  // Adiciona padding ao redor do conteúdo
+          padding: const EdgeInsets.all(16.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ElevatedButton(
-                onPressed: () {
-                  context.read<MyAppState>()._runScript();
-                },
-                child: Text('Atualizar Lista'),
-              ),
-              SizedBox(height: 10),
-              if (appState.isLoading) 
+              if (appState.isLoading)
                 Center(
-                  child: CircularProgressIndicator(), // Mostra o indicador de carregamento
+                  child: CircularProgressIndicator(),
                 ),
-              if (!appState.isLoading) 
+              if (!appState.isLoading)
                 Expanded(
                   child: SingleChildScrollView(
                     scrollDirection: Axis.vertical,
                     child: Padding(
-                      padding: const EdgeInsets.all(8.0),  // Adiciona padding ao redor da tabela
+                      padding: const EdgeInsets.all(8.0),
                       child: DataTable(
                         columns: [
                           DataColumn(label: Text('Nome')),
                           DataColumn(label: Text('Versão')),
                         ],
-                        rows: appState.outputRows.map((row) {
+                        rows: appState.homologationRows.map((row) {
                           return DataRow(
-                            cells: row.map((cell) {
-                              return DataCell(Text(cell));
-                            }).toList(),
+                            cells: [
+                              DataCell(Text(row[0].toString())),
+                              DataCell(Text(row[1].toString())),
+                            ],
                           );
                         }).toList(),
                       ),
@@ -165,7 +389,6 @@ class _MyHomePageState extends State<MyHomePage> {
                     style: TextStyle(color: Colors.red),
                   ),
                 ),
-              SizedBox(height: 10),
             ],
           ),
         ),
@@ -173,3 +396,4 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 }
+
