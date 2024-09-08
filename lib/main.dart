@@ -41,13 +41,18 @@ class MyAppState extends ChangeNotifier {
   List<List<dynamic>> _homologationRows = [];
   String _error = '';
   bool _isLoading = false;
+  String _searchQuery = '';
 
-  List<Map<String, String>> get outputRows => _outputRows;
-  List<List<dynamic>> get homologationRows => _homologationRows;
+  List<Map<String, String>> get outputRows => _outputRows
+      .where((row) => row['name']!.toLowerCase().contains(_searchQuery.toLowerCase()))
+      .toList();
+  List<List<dynamic>> get homologationRows => _homologationRows
+      .where((row) => row[0].toString().toLowerCase().contains(_searchQuery.toLowerCase()))
+      .toList();
   String get error => _error;
   bool get isLoading => _isLoading;
 
-  Future<void> _runScript() async {
+  Future<void> runScript() async {
     _isLoading = true;
     notifyListeners();
 
@@ -170,6 +175,11 @@ class MyAppState extends ChangeNotifier {
 
     return rows;
   }
+
+  void updateSearchQuery(String query) {
+    _searchQuery = query;
+    notifyListeners();
+  }
 }
 
 class MyHomePage extends StatefulWidget {
@@ -184,7 +194,7 @@ class _MyHomePageState extends State<MyHomePage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<MyAppState>()._runScript();
+      context.read<MyAppState>().runScript();
     });
   }
 
@@ -234,105 +244,124 @@ class MyHomePageContent extends StatelessWidget {
   Widget build(BuildContext context) {
     var appState = context.watch<MyAppState>();
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            
-            SizedBox(height: 10),
-            if (appState.isLoading)
-              Center(
-                child: CircularProgressIndicator(),
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Softwares Instalados'),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(height: 10),
+              TextField(
+                decoration: InputDecoration(
+                  labelText: 'Pesquisar',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (value) {
+                  context.read<MyAppState>().updateSearchQuery(value);
+                },
               ),
-            if (!appState.isLoading)
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.vertical,
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: DataTable(
-                      columns: [
-                        DataColumn(label: Text('Nome')),
-                        DataColumn(label: Text('Versão')),
-                        DataColumn(label: Text('Compliance')),
-                      ],
-                      rows: appState.outputRows.map((row) {
-                        Color color;
-                        switch (row['status']) {
-                          case 'homologated':
-                            color = Colors.green;
-                            break;
-                          case 'mismatch':
-                            color = Colors.yellow;
-                            break;
-                          default:
-                            color = Colors.red;
-                        }
-                        return DataRow(
-                          cells: [
-                            DataCell(Text(row['name']!)),
-                            DataCell(Text(row['version']!)),
-                            DataCell(Container(
-                              width: 20,
-                              height: 20,
-                              color: color,
-                            )),
-                          ],
-                        );
-                      }).toList(),
+              SizedBox(height: 10),
+              if (appState.isLoading)
+                Center(
+                  child: CircularProgressIndicator(),
+                ),
+              if (!appState.isLoading)
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.vertical,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: DataTable(
+                        columns: [
+                          DataColumn(label: Text('Nome')),
+                          DataColumn(label: Text('Versão')),
+                          DataColumn(label: Text('Compliance')),
+                        ],
+                        rows: appState.outputRows.map((row) {
+                          Color color;
+                          switch (row['status']) {
+                            case 'homologated':
+                              color = Colors.green;
+                              break;
+                            case 'mismatch':
+                              color = Colors.yellow;
+                              break;
+                            default:
+                              color = Colors.red;
+                          }
+                          return DataRow(
+                            cells: [
+                              DataCell(Text(row['name']!)),
+                              DataCell(Text(row['version']!)),
+                              DataCell(Container(
+                                width: 20,
+                                height: 20,
+                                color: color,
+                              )),
+                            ],
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            if (appState.error.isNotEmpty)
+              if (appState.error.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text(
+                    appState.error,
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+              SizedBox(height: 10),
+              // Legenda das cores
               Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(
-                  appState.error,
-                  style: TextStyle(color: Colors.red),
+                padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        ElevatedButton(
+                          onPressed: () {
+                            context.read<MyAppState>().runScript();
+                          },
+                          child: Text('Atualizar Lista'),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Container(width: 20, height: 20, color: Colors.green),
+                        SizedBox(width: 10),
+                        Text('Homologado'),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Container(width: 20, height: 20, color: Colors.yellow),
+                        SizedBox(width: 10),
+                        Text('Versão Diferente'),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Container(width: 20, height: 20, color: Colors.red),
+                        SizedBox(width: 10),
+                        Text('Não Homologado'),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            SizedBox(height: 10),
-            // Legenda das cores
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ElevatedButton(
-                    onPressed: () {
-                    context.read<MyAppState>()._runScript();
-                    },
-                    child: Text('Atualizar Lista'),
-                  ),
-                  Row(
-                    children: [
-                      Container(width: 20, height: 20, color: Colors.green),
-                      SizedBox(width: 10),
-                      Text('Homologado'),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Container(width: 20, height: 20, color: Colors.yellow),
-                      SizedBox(width: 10),
-                      Text('Versão Diferente'),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Container(width: 20, height: 20, color: Colors.red),
-                      SizedBox(width: 10),
-                      Text('Não Homologado'),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -346,7 +375,7 @@ class HomologationPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Softwares Homologados CC'),
+        title: Text('Softwares Homologados CC - Lista Geral'),
       ),
       body: Center(
         child: Padding(
@@ -354,6 +383,16 @@ class HomologationPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              TextField(
+                decoration: InputDecoration(
+                  labelText: 'Pesquisar',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (value) {
+                  context.read<MyAppState>().updateSearchQuery(value);
+                },
+              ),
+              SizedBox(height: 10),
               if (appState.isLoading)
                 Center(
                   child: CircularProgressIndicator(),
