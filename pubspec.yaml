@@ -25,6 +25,15 @@ dev_dependencies:
     sdk: flutter
 
   flutter_lints: ^2.0.0
+  msix: ^3.16.8
 
 flutter:
   uses-material-design: true
+
+msix_config:
+  display_name: Lucas App
+  publisher_display_name: Company Name
+  identity_name: company.suite.flutterapp
+  msix_version: 1.0.0.0
+  logo_path: "C:\\Users\\lucas\\OneDrive\\Desktop\\152225760-309041e9-266e-42da-9915-34478ee74736.png"
+  capabilities: internetClient, location, microphone, webcam
