@@ -28,7 +28,11 @@ class MyApp extends StatelessWidget {
         title: 'Lista de Softwares Instalados',
         theme: ThemeData(
           useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00FF00)),
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: Colors.blue,
+            primary: Colors.blue[700]!,
+            secondary: Colors.amber[600]!,
+          ),
         ),
         home: MyHomePage(),
       ),
@@ -223,6 +227,8 @@ class _MyHomePageState extends State<MyHomePage> {
                 label: Text('Softwares homologados CC'),
               ),
             ],
+            elevation: 1,
+            useIndicator: true,
           ),
           Expanded(
             child: IndexedStack(
@@ -247,6 +253,10 @@ class MyHomePageContent extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text('Softwares Instalados'),
+        centerTitle: false,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.only(bottomLeft: Radius.circular(25), bottomRight: Radius.circular(25))
+        )
       ),
       body: Center(
         child: Padding(
@@ -283,26 +293,22 @@ class MyHomePageContent extends StatelessWidget {
                           DataColumn(label: Text('Compliance')),
                         ],
                         rows: appState.outputRows.map((row) {
-                          Color color;
+                          Icon icon;
                           switch (row['status']) {
                             case 'homologated':
-                              color = Colors.green;
+                              icon = Icon(Icons.check_circle, color: Colors.green);
                               break;
                             case 'mismatch':
-                              color = Colors.yellow;
+                              icon = Icon(Icons.warning, color: Colors.yellow);
                               break;
                             default:
-                              color = Colors.red;
+                              icon = Icon(Icons.cancel, color: Colors.red);
                           }
                           return DataRow(
                             cells: [
                               DataCell(Text(row['name']!)),
                               DataCell(Text(row['version']!)),
-                              DataCell(Container(
-                                width: 20,
-                                height: 20,
-                                color: color,
-                              )),
+                              DataCell(icon),
                             ],
                           );
                         }).toList(),
@@ -319,7 +325,6 @@ class MyHomePageContent extends StatelessWidget {
                   ),
                 ),
               SizedBox(height: 10),
-              // Legenda das cores
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
                 child: Column(
@@ -328,34 +333,71 @@ class MyHomePageContent extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        ElevatedButton(
+                        ElevatedButton.icon(
                           onPressed: () {
                             context.read<MyAppState>().runScript();
                           },
-                          child: Text('Atualizar Lista'),
+                          icon: Icon(Icons.refresh),
+                          label: Text('Atualizar Lista'),
+                          style: ElevatedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                    Row(
-                      children: [
-                        Container(width: 20, height: 20, color: Colors.green),
-                        SizedBox(width: 10),
-                        Text('Homologado'),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        Container(width: 20, height: 20, color: Colors.yellow),
-                        SizedBox(width: 10),
-                        Text('Versão Diferente'),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        Container(width: 20, height: 20, color: Colors.red),
-                        SizedBox(width: 10),
-                        Text('Não Homologado'),
-                      ],
+                    SizedBox(height: 16),
+                    Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey[400]!),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.all(8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Compliance:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue[700],
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 8),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle, color: Colors.green),
+                              SizedBox(width: 10),
+                              Expanded(child: Text('Homologado pelo CC')),
+                            ],
+                          ),
+                          Divider(color: Colors.grey[300]),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.warning, color: Colors.yellow),
+                              SizedBox(width: 10),
+                              Expanded(child: Text('Versão diferente da homologada')),
+                            ],
+                          ),
+                          Divider(color: Colors.grey[300]),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.cancel, color: Colors.red),
+                              SizedBox(width: 10),
+                              Expanded(child: Text('Software não homologado')),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -376,6 +418,10 @@ class HomologationPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text('Softwares Homologados CC - Lista Geral'),
+        centerTitle: false,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.only(bottomLeft: Radius.circular(25), bottomRight: Radius.circular(25))
+        ),
       ),
       body: Center(
         child: Padding(
@@ -435,4 +481,5 @@ class HomologationPage extends StatelessWidget {
     );
   }
 }
+
 
