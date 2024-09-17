@@ -342,11 +342,11 @@ class _MyHomePageContentState extends State<MyHomePageContent> with SingleTicker
               break;
             case 'mismatch':
               statusColor = Colors.yellow;
-              tooltipMessage = 'Alerta: não homologado';
+              tooltipMessage = 'Alerta: versão não homologada';
               break;
             case 'not_found':
               statusColor = Colors.red;
-              tooltipMessage = 'Status desconhecido';
+              tooltipMessage = 'Software não homologado';
               break;
             default:
               statusColor = Colors.grey;
