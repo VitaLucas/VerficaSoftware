@@ -203,8 +203,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    var appState = context.watch<MyAppState>();
-
     return Scaffold(
       body: Row(
         children: [
@@ -332,8 +330,7 @@ Map<String, int> statusOrder = {
 };
 
 
-  Widget _buildDataTable(List<Map<String, String>> rows) {
-  // Ordena os dados
+Widget _buildDataTable(List<Map<String, String>> rows) {
   List<Map<String, String>> sortedRows = List.from(rows);
   sortedRows.sort((a, b) {
     int result;
@@ -400,7 +397,15 @@ Map<String, int> statusOrder = {
 
         return DataRow(cells: [
           DataCell(Center(child: Tooltip(message: tooltipMessage, child: Icon(Icons.circle, color: statusColor)))),
-          DataCell(Text(row['name']!)),
+          DataCell(
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 400), // Define a largura máxima
+              child: Text(
+                row['name']!,
+                overflow: TextOverflow.ellipsis, // Adiciona reticências quando o texto é muito longo
+              ),
+            ),
+          ),
           DataCell(Text(row['version']!)),
           DataCell(Text(row['plataform']!)),
         ]);
@@ -408,6 +413,7 @@ Map<String, int> statusOrder = {
     ),
   );
 }
+
 
 }
 
@@ -447,9 +453,9 @@ class HomologationPage extends StatelessWidget {
                   ],
                   rows: appState.homologationRows.map((row) {
                     return DataRow(cells: [
-                      DataCell(Text(row[0].toString())),
-                      DataCell(Text(row[1].toString())),
-                      DataCell(Text(row[3].toString())),
+                      DataCell(Text(row[0].toString(), overflow: TextOverflow.ellipsis)),
+                      DataCell(Text(row[1].toString(), overflow: TextOverflow.ellipsis)),
+                      DataCell(Text(row[3].toString(), overflow: TextOverflow.ellipsis)),
                     ]);
                   }).toList(),
                 ),
