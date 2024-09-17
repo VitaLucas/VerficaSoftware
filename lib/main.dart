@@ -256,6 +256,8 @@ class MyHomePageContent extends StatefulWidget {
 
 class _MyHomePageContentState extends State<MyHomePageContent> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  String _sortColumn = 'status'; // Coluna que será usada para ordenação
+  bool _sortAscending = true; // Direção da ordenação
 
   @override
   void initState() {
@@ -322,47 +324,91 @@ class _MyHomePageContentState extends State<MyHomePageContent> with SingleTicker
     );
   }
 
-  Widget _buildDataTable(List<Map<String, String>> rows) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.vertical,
-      child: DataTable(
-        columns: [
-          DataColumn(label: Text('Compliance')),
-          DataColumn(label: Text('Nome')),
-          DataColumn(label: Text('Versão')),
-          DataColumn(label: Text('Plataforma')),
-        ],
-        rows: rows.map((row) {
-          Color statusColor;
-          String tooltipMessage;
-          switch (row['status']) {
-            case 'homologated':
-              statusColor = Colors.green;
-              tooltipMessage = 'Homologado: versão correta';
-              break;
-            case 'mismatch':
-              statusColor = Colors.yellow;
-              tooltipMessage = 'Alerta: versão não homologada';
-              break;
-            case 'not_found':
-              statusColor = Colors.red;
-              tooltipMessage = 'Software não homologado';
-              break;
-            default:
-              statusColor = Colors.grey;
-              tooltipMessage = 'Status desconhecido';
-          }
+  // Definindo a ordem dos status
+Map<String, int> statusOrder = {
+  'homologated': 1,
+  'mismatch': 2,
+  'not_found': 3,
+};
 
-          return DataRow(cells: [
-            DataCell(Center(child: Tooltip(message: tooltipMessage, child: Icon(Icons.circle, color: statusColor)))),
-            DataCell(Text(row['name']!)),
-            DataCell(Text(row['version']!)),
-            DataCell(Text(row['plataform']!)),
-          ]);
-        }).toList(),
-      ),
-    );
-  }
+
+  Widget _buildDataTable(List<Map<String, String>> rows) {
+  // Ordena os dados
+  List<Map<String, String>> sortedRows = List.from(rows);
+  sortedRows.sort((a, b) {
+    int result;
+    switch (_sortColumn) {
+      case 'status':
+        result = statusOrder[a['status']!]!.compareTo(statusOrder[b['status']!]!);
+        break;
+      case 'name':
+        result = a['name']!.compareTo(b['name']!);
+        break;
+      default:
+        result = 0;
+    }
+    return _sortAscending ? result : -result;
+  });
+
+  return SingleChildScrollView(
+    scrollDirection: Axis.vertical,
+    child: DataTable(
+      sortColumnIndex: _sortColumn == 'status' ? 0 : (_sortColumn == 'name' ? 1 : null),
+      sortAscending: _sortAscending,
+      columns: [
+        DataColumn(
+          label: Text('Compliance'),
+          onSort: (columnIndex, ascending) {
+            setState(() {
+              _sortColumn = 'status';
+              _sortAscending = ascending;
+            });
+          },
+        ),
+        DataColumn(
+          label: Text('Nome'),
+          onSort: (columnIndex, ascending) {
+            setState(() {
+              _sortColumn = 'name';
+              _sortAscending = ascending;
+            });
+          },
+        ),
+        DataColumn(label: Text('Versão')),
+        DataColumn(label: Text('Plataforma')),
+      ],
+      rows: sortedRows.map((row) {
+        Color statusColor;
+        String tooltipMessage;
+        switch (row['status']) {
+          case 'homologated':
+            statusColor = Colors.green;
+            tooltipMessage = 'Homologado: versão correta';
+            break;
+          case 'mismatch':
+            statusColor = Colors.yellow;
+            tooltipMessage = 'Alerta: versão não homologada';
+            break;
+          case 'not_found':
+            statusColor = Colors.red;
+            tooltipMessage = 'Software não homologado';
+            break;
+          default:
+            statusColor = Colors.grey;
+            tooltipMessage = 'Status desconhecido';
+        }
+
+        return DataRow(cells: [
+          DataCell(Center(child: Tooltip(message: tooltipMessage, child: Icon(Icons.circle, color: statusColor)))),
+          DataCell(Text(row['name']!)),
+          DataCell(Text(row['version']!)),
+          DataCell(Text(row['plataform']!)),
+        ]);
+      }).toList(),
+    ),
+  );
+}
+
 }
 
 class HomologationPage extends StatelessWidget {
