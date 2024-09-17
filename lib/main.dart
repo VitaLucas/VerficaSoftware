@@ -28,9 +28,9 @@ class MyApp extends StatelessWidget {
         theme: ThemeData(
           useMaterial3: true,
           colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.blue,
-            primary: Colors.blue[700]!,
-            secondary: Colors.amber[600]!,
+            seedColor: const Color.fromARGB(255, 243, 33, 33),
+            primary: const Color.fromARGB(255, 210, 25, 25)!,
+            secondary: const Color.fromARGB(255, 255, 0, 43)!,
           ),
         ),
         home: MyHomePage(),
@@ -52,7 +52,7 @@ class MyAppState extends ChangeNotifier {
   List<List<dynamic>> get homologationRows => _homologationRows
       .where((row) => row[0].toString().toLowerCase().contains(_searchQuery.toLowerCase()))
       .toList();
-      
+
   String get error => _error;
   bool get isLoading => _isLoading;
 
@@ -82,7 +82,6 @@ class MyAppState extends ChangeNotifier {
         arguments,
       );
 
-      // Após obter os dados do script, faça o processamento do CSV de homologação
       await fetchAndProcessCsv(result.stdout);
 
       _error = '';
@@ -100,22 +99,18 @@ class MyAppState extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Referência ao arquivo no Firebase Storage
       final storageRef = FirebaseStorage.instance.ref().child('homologation.csv');
-
-      // Baixar o arquivo para um diretório temporário local
       final directory = await getApplicationDocumentsDirectory();
       final filePath = '${directory.path}/homologation.csv';
       final file = File(filePath);
 
       await storageRef.writeToFile(file);
 
-      // Ler e processar o arquivo CSV
       final csvData = await file.readAsString();
       _homologationRows = CsvToListConverter().convert(csvData);
 
       if (_homologationRows.isNotEmpty) {
-        _homologationRows.removeAt(0); // Remove cabeçalhos
+        _homologationRows.removeAt(0);
       }
 
       _outputRows = await parseAndCompareCsv(scriptOutput);
@@ -134,7 +129,7 @@ class MyAppState extends ChangeNotifier {
     List<String> lines = scriptOutput.split('\n');
 
     if (lines.isNotEmpty) {
-      lines.removeAt(0); // Remove cabeçalhos
+      lines.removeAt(0);
     }
 
     for (String line in lines) {
@@ -143,23 +138,26 @@ class MyAppState extends ChangeNotifier {
             .map((column) => column.replaceAll('"', '').trim())
             .toList();
 
-        if (columns.length >= 2) {
+        if (columns.length >= 4) {
           String name = columns[0];
           String version = columns[1];
+          String type = columns[2];
+          String platform = columns[3];
 
-          // Comparação com o arquivo de homologação
           bool isHomologated = false;
           bool versionMismatch = false;
 
           for (var homologationRow in _homologationRows) {
-            if (homologationRow.length >= 2) {
+            if (homologationRow.length >= 4) {
               String homologationName = homologationRow[0].toString();
               String homologationVersion = homologationRow[1].toString();
+              String homologationType = homologationRow[2].toString();
+              String homologationPlatform = homologationRow[3].toString();
 
-              if (homologationName == name) {
+              if (homologationName == name && homologationType == type && homologationPlatform == platform) {
                 if (homologationVersion == version) {
                   isHomologated = true;
-                  break; // Encontrou uma correspondência exata, pode sair do loop
+                  break;
                 } else {
                   versionMismatch = true;
                 }
@@ -167,10 +165,11 @@ class MyAppState extends ChangeNotifier {
             }
           }
 
-          // Adiciona o resultado da comparação
           rows.add({
             'name': name,
             'version': version,
+            'type': type,
+            'plataform': platform,
             'status': isHomologated ? 'homologated' : (versionMismatch ? 'mismatch' : 'not_found')
           });
         }
@@ -220,11 +219,15 @@ class _MyHomePageState extends State<MyHomePage> {
             destinations: [
               NavigationRailDestination(
                 icon: Icon(Icons.home),
-                label: Text('Softwares desta estação'),
+                label: Text('Nesta estação'),
               ),
               NavigationRailDestination(
-                icon: Icon(Icons.check),
-                label: Text('Softwares homologados CC'),
+                icon: Icon(Icons.verified),
+                label: Text('Homologados'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.cancel),
+                label: Text('Proibidos'),
               ),
             ],
             elevation: 1,
@@ -234,8 +237,9 @@ class _MyHomePageState extends State<MyHomePage> {
             child: IndexedStack(
               index: _selectedIndex,
               children: [
-                MyHomePageContent(), // Página Principal
-                HomologationPage(),  // Softwares Homologados
+                MyHomePageContent(),
+                HomologationPage(),
+                ForbiddenPage(),
               ],
             ),
           ),
@@ -284,237 +288,91 @@ class _MyHomePageContentState extends State<MyHomePageContent> with SingleTicker
           children: [
             SizedBox(height: 10),
             TextField(
-              decoration: InputDecoration(
-                labelText: 'Pesquisar',
-                border: OutlineInputBorder(),
-              ),
               onChanged: (value) {
                 context.read<MyAppState>().updateSearchQuery(value);
               },
+              decoration: InputDecoration(
+                labelText: 'Buscar',
+                prefixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
+              ),
             ),
-            SizedBox(height: 10),
+            SizedBox(height: 20),
             TabBar(
               controller: _tabController,
               tabs: [
-                Tab(text: "Softwares"),
-                Tab(text: "Extensões Browser"),
-                Tab(text: "Plugins"),
+                Tab(text: 'Softwares'),
+                Tab(text: 'Extensões Browser'),
+                Tab(text: 'Plugins'),
               ],
-              labelColor: Theme.of(context).colorScheme.primary,
-              unselectedLabelColor: Colors.grey,
             ),
-            SizedBox(height: 10),
             Expanded(
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  // Aba Softwares
-                  _buildDataTable(appState.outputRows),
-
-                  // Aba Extensões Browser
-                  _buildDataTable([]), // Placeholder para os dados das extensões
-
-                  // Aba Plugins
-                  _buildDataTable([]), // Placeholder para os dados dos plugins
+                  _buildDataTable(appState.outputRows.where((row) => row['type'] == 'Software').toList()),
+                  _buildDataTable(appState.outputRows.where((row) => row['type'] == 'Extension').toList()),
+                  _buildDataTable(appState.outputRows.where((row) => row['type'] == 'Plug-in').toList()),
                 ],
               ),
             ),
-            if (appState.error.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(
-                  appState.error,
-                  style: TextStyle(color: Colors.red),
-                ),
-              ),
-            SizedBox(height: 10),
-            _buildComplianceLegend(),
           ],
         ),
       ),
     );
   }
 
-// Função para contar softwares não homologados em uma lista
-int countNonHomologated(List<Map<String, String>> dataRows) {
-  return dataRows.where((row) => row['status'] == 'not_found').length;
-}
-
-// Função para contar softwares não homologados em todas as abas
-int countTotalNonHomologated(MyAppState appState) {
-  final softwaresNonHomologated = countNonHomologated(appState.outputRows);
-  final extensoesNonHomologated = countNonHomologated([]); // Placeholder
-  final pluginsNonHomologated = countNonHomologated([]); // Placeholder
-  return softwaresNonHomologated + extensoesNonHomologated + pluginsNonHomologated;
-}
-
-  Widget _buildDataTable(List<Map<String, String>> dataRows) {
-  return SingleChildScrollView(
-    scrollDirection: Axis.vertical,
-    child: Padding(
-      padding: const EdgeInsets.all(8.0),
+  Widget _buildDataTable(List<Map<String, String>> rows) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.vertical,
       child: DataTable(
         columns: [
           DataColumn(label: Text('Compliance')),
           DataColumn(label: Text('Nome')),
           DataColumn(label: Text('Versão')),
+          DataColumn(label: Text('Plataforma')),
         ],
-        rows: dataRows.map((row) {
-          Icon icon;
+        rows: rows.map((row) {
+          Color statusColor;
+          String tooltipMessage;
           switch (row['status']) {
             case 'homologated':
-              icon = Icon(Icons.check_circle, color: Colors.green);
+              statusColor = Colors.green;
+              tooltipMessage = 'Homologado: versão correta';
               break;
             case 'mismatch':
-              icon = Icon(Icons.warning, color: Colors.yellow);
+              statusColor = Colors.yellow;
+              tooltipMessage = 'Alerta: não homologado';
+              break;
+            case 'not_found':
+              statusColor = Colors.red;
+              tooltipMessage = 'Status desconhecido';
               break;
             default:
-              icon = Icon(Icons.cancel, color: Colors.red);
+              statusColor = Colors.grey;
+              tooltipMessage = 'Status desconhecido';
           }
-          return DataRow(
-            cells: [
-              DataCell(Row(mainAxisAlignment: MainAxisAlignment.center, children: [icon])),
-              DataCell(Text(row['name']!)),
-              DataCell(Text(row['version']!)),
-            ],
-          );
+
+          return DataRow(cells: [
+            DataCell(Center(child: Tooltip(message: tooltipMessage, child: Icon(Icons.circle, color: statusColor)))),
+            DataCell(Text(row['name']!)),
+            DataCell(Text(row['version']!)),
+            DataCell(Text(row['plataform']!)),
+          ]);
         }).toList(),
       ),
-    ),
-  );
-}
-
-Widget _buildComplianceLegend() {
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey[400]!),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Compliance:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue[700],
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 8),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.check_circle, color: Colors.green),
-                    SizedBox(width: 10),
-                    Expanded(child: Text('Homologado pelo CC')),
-                  ],
-                ),
-                Divider(color: Colors.grey[300]),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.warning, color: Colors.yellow),
-                    SizedBox(width: 10),
-                    Expanded(child: Text('Versão diferente da homologada')),
-                  ],
-                ),
-                Divider(color: Colors.grey[300]),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.cancel, color: Colors.red),
-                    SizedBox(width: 10),
-                    Expanded(child: Text('Software não homologado')),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        SizedBox(width: 40),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  'Total de softwares não homologados',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.red[700],
-                  ),
-                ),
-                SizedBox(height: 8),
-                // Aqui você precisa garantir que `countTotalNonHomologated` 
-                // seja chamado no momento correto para obter o número atualizado.
-                Text(
-                  '${countTotalNonHomologated(context.read<MyAppState>())}',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.red,
-                  ),
-                ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                  Expanded(child: Text('Regularize', textAlign:TextAlign.center))
-                  ]
-                )
-              ],
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-}
-
-class HomologationPage extends StatefulWidget {
-  @override
-  _HomologationPageState createState() => _HomologationPageState();
-}
-
-class _HomologationPageState extends State<HomologationPage> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    );
   }
+}
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
+class HomologationPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var appState = context.watch<MyAppState>();
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Homologados - Lista Geral'),
-        centerTitle: false,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.only(bottomLeft: Radius.circular(25), bottomRight: Radius.circular(25)),
-        ),
+        title: Text('Softwares Homologados CC'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -522,75 +380,50 @@ class _HomologationPageState extends State<HomologationPage> with SingleTickerPr
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             TextField(
-              decoration: InputDecoration(
-                labelText: 'Pesquisar',
-                border: OutlineInputBorder(),
-              ),
               onChanged: (value) {
                 context.read<MyAppState>().updateSearchQuery(value);
               },
-            ),
-            SizedBox(height: 10),
-            TabBar(
-              controller: _tabController,
-              tabs: [
-                Tab(text: "Softwares"),
-                Tab(text: "Extensões Browser"),
-                Tab(text: "Plugins"),
-              ],
-              labelColor: Theme.of(context).colorScheme.primary,
-              unselectedLabelColor: Colors.grey,
-            ),
-            SizedBox(height: 10),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  // Aba Softwares
-                  _buildDataTable(appState.homologationRows),
-
-                  // Aba Extensões Browser
-                  _buildDataTable([]), // Placeholder para os dados das extensões
-
-                  // Aba Plugins
-                  _buildDataTable([]), // Placeholder para os dados dos plugins
-                ],
+              decoration: InputDecoration(
+                labelText: 'Buscar',
+                prefixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
               ),
             ),
-            if (appState.error.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(
-                  appState.error,
-                  style: TextStyle(color: Colors.red),
+            SizedBox(height: 20),
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.vertical,
+                child: DataTable(
+                  columns: [
+                    DataColumn(label: Text('Nome')),
+                    DataColumn(label: Text('Versão')),
+                    DataColumn(label: Text('Plataforma')),
+                  ],
+                  rows: appState.homologationRows.map((row) {
+                    return DataRow(cells: [
+                      DataCell(Text(row[0].toString())),
+                      DataCell(Text(row[1].toString())),
+                      DataCell(Text(row[3].toString())),
+                    ]);
+                  }).toList(),
                 ),
               ),
+            ),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildDataTable(List<List<dynamic>> dataRows) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.vertical,
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: DataTable(
-          columns: [
-            DataColumn(label: Text('Nome')),
-            DataColumn(label: Text('Versão')),
-          ],
-          rows: dataRows.map((row) {
-            return DataRow(
-              cells: [
-                DataCell(Text(row[0].toString())),
-                DataCell(Text(row[1].toString())),
-              ],
-            );
-          }).toList(),
-        ),
-      ),
+
+class ForbiddenPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Softwares proibidos'),
+      )
     );
   }
 }
